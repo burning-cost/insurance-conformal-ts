@@ -201,28 +201,35 @@ class PoissonPearsonScore:
         self,
         s: float | np.ndarray,
         y_hat: np.ndarray,
+        upper: bool = True,
         **kwargs,
     ) -> np.ndarray:
-        """Invert Pearson score to upper prediction bound.
+        """Invert Pearson score to prediction bound.
 
-        Solving ``(y - mu) / sqrt(mu) = s`` for y:
+        For the upper bound, solves ``(y - mu) / sqrt(mu) = s``:
         ``y = mu + s * sqrt(mu)``.
+        For the lower bound: ``y = max(0, mu - s * sqrt(mu))``.
 
         Parameters
         ----------
         s:
-            Score quantile.
+            Score quantile (the absolute (1-alpha) quantile of the score).
         y_hat:
             Predicted Poisson mean.
+        upper:
+            If True, return upper bound; else lower.
 
         Returns
         -------
         np.ndarray
-            Upper prediction bound: ``mu + s * sqrt(mu)``.
+            Prediction bound.
         """
         mu = np.maximum(np.asarray(y_hat, dtype=float), self.min_mu)
         s = np.asarray(s, dtype=float)
-        return mu + s * np.sqrt(mu)
+        if upper:
+            return mu + s * np.sqrt(mu)
+        return np.maximum(mu - s * np.sqrt(mu), 0.0)
+
 
 
 class NegBinomPearsonScore:
@@ -300,12 +307,13 @@ class NegBinomPearsonScore:
         s: float | np.ndarray,
         y_hat: np.ndarray,
         phi: float | None = None,
+        upper: bool = True,
         **kwargs,
     ) -> np.ndarray:
-        """Invert NB Pearson score to upper prediction bound.
+        """Invert NB Pearson score to prediction bound.
 
-        Solving ``(y - mu) / sqrt(Var) = s`` for y:
-        ``y = mu + s * sqrt(Var(mu, phi))``.
+        For the upper bound: ``y = mu + s * sqrt(Var(mu, phi))``.
+        For the lower bound: ``y = max(0, mu - s * sqrt(Var(mu, phi)))``.
 
         Parameters
         ----------
@@ -315,11 +323,13 @@ class NegBinomPearsonScore:
             Predicted NB mean.
         phi:
             Dispersion parameter.
+        upper:
+            If True, return upper bound; else lower.
 
         Returns
         -------
         np.ndarray
-            Upper prediction bound.
+            Prediction bound.
         """
         effective_phi = phi if phi is not None else self.phi
         if effective_phi is None:
@@ -327,7 +337,10 @@ class NegBinomPearsonScore:
         mu = np.asarray(y_hat, dtype=float)
         s = np.asarray(s, dtype=float)
         var = np.maximum(self._variance(mu, effective_phi), self.min_var)
-        return mu + s * np.sqrt(var)
+        if upper:
+            return mu + s * np.sqrt(var)
+        return np.maximum(mu - s * np.sqrt(var), 0.0)
+
 
 
 class ExposureAdjustedScore:

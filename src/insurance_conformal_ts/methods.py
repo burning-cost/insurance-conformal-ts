@@ -241,12 +241,12 @@ class ACI:
                 # No calibration data yet: use wide default interval
                 q_t = np.inf
             else:
-                q_t = _conformal_quantile(cal, alpha_t)
+                q_t = _conformal_quantile(np.abs(cal), alpha_t)
 
             # Compute bounds using score.inverse
             upper[t] = self.score.inverse(q_t, y_hat_t, **step_kw)
             lower[t] = self.score.inverse(
-                -q_t if q_t != np.inf else -np.inf,
+                q_t,
                 y_hat_t,
                 upper=False,
                 **step_kw,
@@ -515,7 +515,7 @@ class EnbPI:
 
             upper[t] = self.score.inverse(q_t, y_hat_t, **step_kw)
             lower[t] = self.score.inverse(
-                -q_t if q_t != np.inf else -np.inf,
+                q_t,
                 y_hat_t,
                 upper=False,
                 **step_kw,
@@ -718,7 +718,7 @@ class SPCI:
 
             upper[t] = self.score.inverse(q_t, y_hat_t, **step_kw)
             lower[t] = self.score.inverse(
-                -q_t if q_t != np.inf else -np.inf,
+                q_t,
                 y_hat_t,
                 upper=False,
                 **step_kw,
@@ -906,7 +906,7 @@ class ConformalPID:
 
             upper[t] = self.score.inverse(q_t, y_hat_t, **step_kw)
             lower[t] = self.score.inverse(
-                -q_t if q_t != np.inf else -np.inf,
+                q_t,
                 y_hat_t,
                 upper=False,
                 **step_kw,

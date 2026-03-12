@@ -299,7 +299,7 @@ class MSCP:
             upper = float(self.score.inverse(q, np.array([y_hat_h]), **step_kw)[0])
             lower = float(
                 self.score.inverse(
-                    -q if q != np.inf else -np.inf,
+                    q,
                     np.array([y_hat_h]),
                     upper=False,
                     **step_kw,
@@ -375,7 +375,7 @@ class MSCP:
             )
             lower[t] = float(
                 self.score.inverse(
-                    -q if q != np.inf else -np.inf,
+                    q,
                     np.array([y_hat_h]),
                     upper=False,
                     **step_kw,
