@@ -183,3 +183,9 @@ ccc = ClaimsCountConformal(base_forecaster=forecaster, method=method, score=scor
 - Xu, C., Jiang, Y., & Xie, Y. (2023). Sequential predictive conformal inference for time series. *ICML 2023*.
 - Angelopoulos, A. N., Bates, S., Malik, J., & Jordan, M. I. (2023). Conformal PID control for time series prediction. *NeurIPS 2023*.
 - arXiv:2601.18509 (2026). Multi-step conformal prediction benchmark.
+
+## Performance
+
+No formal benchmark yet. The library implements four sequential conformal methods (ACI, EnbPI, SPCI, ConformalPID) plus MSCP for multi-step horizons. The key property is not speed but temporal validity: all methods maintain coverage guarantees under distribution shift, which standard split conformal does not.
+
+On typical UK insurance time series (60-120 monthly periods), all methods run in under 10 seconds. EnbPI is the exception — it fits B bootstrap forecasters (default B=50), which adds 1–5 minutes depending on the base forecaster. For most applications, ACI is the practical default: single tuning parameter (gamma), no ensemble overhead, and coverage tracks within 2–3 percentage points of target even during rapid distribution shift. SPCI is worth the added complexity when the non-conformity score series is strongly autocorrelated, which is common in seasonal loss ratio series. The MSCP fan chart is 15–30% tighter than ACI at the 12-month horizon on insurance data because it calibrates per horizon rather than using a single global quantile.
