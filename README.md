@@ -176,6 +176,11 @@ ccc = ClaimsCountConformal(base_forecaster=forecaster, method=method, score=scor
 
 ---
 
+
+## Databricks Notebook
+
+A ready-to-run Databricks notebook benchmarking this library against standard approaches is available in [burning-cost-examples](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/insurance_conformal_ts_demo.py).
+
 ## References
 
 - Gibbs, I., & Candès, E. (2021). Adaptive conformal inference under distribution shift. *NeurIPS 2021*.
