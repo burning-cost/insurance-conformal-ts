@@ -244,13 +244,13 @@ class ACI:
                 q_t = _conformal_quantile(np.abs(cal), alpha_t)
 
             # Compute bounds using score.inverse
-            upper[t] = self.score.inverse(q_t, y_hat_t, **step_kw)
-            lower[t] = self.score.inverse(
+            upper[t] = float(self.score.inverse(q_t, y_hat_t, **step_kw).flat[0])
+            lower[t] = float(self.score.inverse(
                 q_t,
                 y_hat_t,
                 upper=False,
                 **step_kw,
-            )
+            ).flat[0])
 
             # Observe y[t] and update
             s_t = float(
@@ -513,13 +513,13 @@ class EnbPI:
 
             q_t = _conformal_quantile(np.abs(cal), alpha)
 
-            upper[t] = self.score.inverse(q_t, y_hat_t, **step_kw)
-            lower[t] = self.score.inverse(
+            upper[t] = float(self.score.inverse(q_t, y_hat_t, **step_kw).flat[0])
+            lower[t] = float(self.score.inverse(
                 q_t,
                 y_hat_t,
                 upper=False,
                 **step_kw,
-            )
+            ).flat[0])
 
             # Update calibration: replace oldest with new residual
             s_t = float(
@@ -716,13 +716,13 @@ class SPCI:
                 else:
                     q_t = np.inf
 
-            upper[t] = self.score.inverse(q_t, y_hat_t, **step_kw)
-            lower[t] = self.score.inverse(
+            upper[t] = float(self.score.inverse(q_t, y_hat_t, **step_kw).flat[0])
+            lower[t] = float(self.score.inverse(
                 q_t,
                 y_hat_t,
                 upper=False,
                 **step_kw,
-            )
+            ).flat[0])
 
             s_t = float(
                 self.score.score(np.array([y[t]]), y_hat_t, **step_kw)[0]
@@ -904,13 +904,13 @@ class ConformalPID:
             else:
                 q_t = _conformal_quantile(np.abs(cal), pid_alpha)
 
-            upper[t] = self.score.inverse(q_t, y_hat_t, **step_kw)
-            lower[t] = self.score.inverse(
+            upper[t] = float(self.score.inverse(q_t, y_hat_t, **step_kw).flat[0])
+            lower[t] = float(self.score.inverse(
                 q_t,
                 y_hat_t,
                 upper=False,
                 **step_kw,
-            )
+            ).flat[0])
 
             s_t = float(
                 self.score.score(np.array([y[t]]), y_hat_t, **step_kw)[0]
