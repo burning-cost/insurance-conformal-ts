@@ -60,6 +60,44 @@ class BaseForecaster(Protocol):
 
 
 # ---------------------------------------------------------------------------
+# Simple built-in forecasters (useful for testing and baselines)
+# ---------------------------------------------------------------------------
+
+class ConstantForecaster:
+    """Always predicts the mean of the training series.
+
+    The simplest possible baseline. Useful for sanity-checking conformal
+    methods and for the quickstart example — replace with your own
+    GLM, ARIMA, or gradient boosted model in production.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> f = ConstantForecaster()
+    >>> f.fit(np.array([10.0, 12.0, 11.0]))
+    >>> f.predict()
+    array([11.0])
+    """
+
+    def __init__(self) -> None:
+        self._mean: float = 0.0
+
+    def fit(self, y: np.ndarray, X: np.ndarray | None = None) -> "ConstantForecaster":
+        """Compute the mean of y."""
+        self._mean = float(np.mean(y))
+        return self
+
+    def predict(self, X: np.ndarray | None = None) -> np.ndarray:
+        """Return the training mean as the point forecast."""
+        return np.array([self._mean])
+
+
+class MeanForecaster(ConstantForecaster):
+    """Alias for ConstantForecaster. Predicts the mean of the training series."""
+    pass
+
+
+# ---------------------------------------------------------------------------
 # Utility: empirical quantile with finite-sample correction
 # ---------------------------------------------------------------------------
 
@@ -123,6 +161,17 @@ class ACI:
     window_size:
         Number of recent residuals to use as calibration set. None
         uses all historical residuals. Default 200.
+    burn_in:
+        Minimum number of calibration scores required before producing
+        finite intervals. Until this many residuals have been observed,
+        the method outputs (0, inf) (infinitely wide intervals).
+        This prevents the cold-start problem where the first few test
+        intervals are trivially uninformative. Default 5.
+
+        On a short test window (e.g. 12 monthly observations), a
+        burn_in of 5 means the first 5 intervals are (0, inf) and
+        the remaining 7 are fully adaptive. Use a larger training set
+        or set burn_in=1 if you need intervals from the first step.
 
     References
     ----------
@@ -136,11 +185,13 @@ class ACI:
         score: NonConformityScore | None = None,
         gamma: float = 0.02,
         window_size: int | None = 200,
+        burn_in: int = 5,
     ) -> None:
         self.base_forecaster = base_forecaster
         self.score = score if score is not None else AbsoluteResidualScore()
         self.gamma = gamma
         self.window_size = window_size
+        self.burn_in = burn_in
 
         self._is_fitted: bool = False
         self._calibration_scores: list[float] = []
@@ -237,8 +288,11 @@ class ACI:
                 else np.array(self._calibration_scores)
             )
 
-            if len(cal) == 0:
-                # No calibration data yet: use wide default interval
+            if len(cal) < self.burn_in:
+                # Fewer calibration points than burn_in threshold: emit
+                # infinite intervals. This prevents the cold-start problem
+                # where the first few test intervals are trivially uninformative.
+                # The ACI alpha update still runs so the tracker warms up.
                 q_t = np.inf
             else:
                 q_t = _conformal_quantile(np.abs(cal), alpha_t)
@@ -360,10 +414,11 @@ class _BootstrapEnsemble:
                 preds_excl.append(m.predict(X[i : i + 1] if X is not None else None))
             loo_preds[i] = float(np.mean(preds_excl))
 
-        kw_i = {
-            k: (v[i] for i in range(n)) if isinstance(v, np.ndarray) else v
-            for k, v in score_kw.items()
-        }
+        # score_kw may contain per-observation arrays (e.g. exposure, sigma_hat).
+        # Pass them as-is to score.score() — the score implementation slices
+        # them row-by-row internally when needed. This was previously computing
+        # kw_i (a dict of generators) but never using it, passing score_kw
+        # (the global dict) instead. Use score_kw directly as intended.
         return score.score(y, loo_preds, **score_kw)
 
 
@@ -867,6 +922,18 @@ class ConformalPID:
         integral = 0.0
         prev_error = 0.0
 
+        # Track test-time coverage to compute the actual PID error signal.
+        # Previous code computed mean(calibration_scores > quantile(calibration_scores))
+        # which is constant by definition (the quantile is defined so exactly
+        # alpha fraction of scores exceed it). That made the controller open-loop.
+        #
+        # Correct error signal (Angelopoulos et al. 2023, eq. 1):
+        #   err_t = alpha - 1{y_t not covered}
+        # i.e., +alpha if covered (we want to tighten alpha), -(1-alpha) if not
+        # covered. The controller accumulates this to track the running coverage
+        # error vs the target.
+        test_coverage_flags: list[float] = []  # 1.0 = covered, 0.0 = not covered
+
         for t in range(n):
             step_kw = {
                 k: (v[t : t + 1] if isinstance(v, np.ndarray) else v)
@@ -876,20 +943,22 @@ class ConformalPID:
             x_t = X[t : t + 1] if X is not None else None
             y_hat_t = self.base_forecaster.predict(x_t)
 
-            # PID adjustment on alpha
-            error = alpha - (
-                0.0 if len(self._calibration_scores) == 0
-                else float(np.mean(
-                    np.array(self._calibration_scores[-max(1, len(self._calibration_scores)):])
-                    > _conformal_quantile(
-                        np.abs(self._calibration_scores) if self._calibration_scores else np.array([0.0]),
-                        alpha,
-                    )
-                ))
-            )
+            # PID error: difference between target miscoverage and actual
+            # miscoverage on test observations seen so far.
+            # At t=0 we have no test feedback yet; use neutral error (0).
+            if len(test_coverage_flags) == 0:
+                error = 0.0
+            else:
+                recent_coverage = float(np.mean(test_coverage_flags))
+                # recent_coverage is E[covered]; target coverage is (1 - alpha)
+                # error > 0 => over-covered => increase alpha (tighten intervals)
+                # error < 0 => under-covered => decrease alpha (widen intervals)
+                error = recent_coverage - (1.0 - alpha)
+
             integral = float(np.clip(integral + error, -self.saturation, self.saturation))
             derivative = error - prev_error
-            pid_alpha = alpha + self.Kp * error + self.Ki * integral + self.Kd * derivative
+            # PID adjustment: shift alpha toward the error-correcting value
+            pid_alpha = alpha - (self.Kp * error + self.Ki * integral + self.Kd * derivative)
             pid_alpha = float(np.clip(pid_alpha, 1e-6, 1.0 - 1e-6))
             prev_error = error
 
@@ -916,5 +985,9 @@ class ConformalPID:
                 self.score.score(np.array([y[t]]), y_hat_t, **step_kw)[0]
             )
             self._calibration_scores.append(s_t)
+
+            # Record whether y[t] fell inside the interval
+            covered = lower[t] <= y[t] <= upper[t]
+            test_coverage_flags.append(1.0 if covered else 0.0)
 
         return lower, upper

@@ -42,8 +42,11 @@ from insurance_conformal_ts.nonconformity import (
 )
 from insurance_conformal_ts.methods import (
     ACI,
+    BaseForecaster,
+    ConstantForecaster,
     EnbPI,
     ConformalPID,
+    MeanForecaster,
     SPCI,
 )
 from insurance_conformal_ts.multistep import MSCP
@@ -72,6 +75,10 @@ __all__ = [
     "EnbPI",
     "SPCI",
     "ConformalPID",
+    # Built-in forecasters
+    "BaseForecaster",
+    "ConstantForecaster",
+    "MeanForecaster",
     "MSCP",
     # Insurance wrappers
     "ClaimsCountConformal",

@@ -93,20 +93,30 @@ pip install "insurance-conformal-ts[plots]"
 
 ```python
 import numpy as np
-from insurance_conformal_ts import ClaimsCountConformal
-from tests.conftest import ConstantForecaster  # or bring your own
+from insurance_conformal_ts import ACI, ClaimsCountConformal, ConstantForecaster
 
-# Monthly claim counts, 5 years training, 1 year test
-y_train = ...  # shape (60,)
+# Monthly claim counts. ACI needs calibration data to produce finite intervals.
+# Rule of thumb: training set >= 36 months. On 60 train / 12 test, the default
+# burn_in=5 means the first 5 test intervals are (0, inf); from step 6 onward
+# the intervals are fully adaptive. Use more training data or a split-conformal
+# calibration step to get finite intervals from step 1.
+y_train = ...  # shape (60,) — 5 years monthly, minimum recommended
 y_test = ...   # shape (12,)
 
-ccc = ClaimsCountConformal()  # defaults: Poisson GLM + ACI + Pearson score
+# Option A: ClaimsCountConformal (Poisson GLM + ACI + Pearson score)
+ccc = ClaimsCountConformal()
 ccc.fit(y_train)
 lower, upper = ccc.predict_interval(y_test, alpha=0.1)
 
 report = ccc.coverage_report(y_test, lower, upper)
 print(f"Empirical coverage: {report['coverage']:.1%}")  # should be ~90%
 print(f"Mean interval width: {report['mean_width']:.1f} claims")
+
+# Option B: roll your own base forecaster (ConstantForecaster as a baseline)
+forecaster = ConstantForecaster()
+aci = ACI(forecaster, burn_in=5)
+aci.fit(y_train)
+lower, upper = aci.predict_interval(y_test, alpha=0.1)
 ```
 
 ### Multi-step fan chart (MSCP)
