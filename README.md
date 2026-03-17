@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/insurance-conformal-ts)](https://pypi.org/project/insurance-conformal-ts/)
 [![Python](https://img.shields.io/pypi/pyversions/insurance-conformal-ts)](https://pypi.org/project/insurance-conformal-ts/)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
-[![License](https://img.shields.io/badge/license-BSD--3-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
 
 Conformal prediction intervals for non-exchangeable insurance claims time series.
 
