@@ -78,13 +78,13 @@ Horizon-specific calibration for h=1..H. The benchmark winner on sequential mult
 ## Install
 
 ```bash
-pip install insurance-conformal-ts
+uv add insurance-conformal-ts
 ```
 
 For plots:
 
 ```bash
-pip install "insurance-conformal-ts[plots]"
+uv add "insurance-conformal-ts[plots]"
 ```
 
 > 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-conformal-ts/discussions). Found it useful? A ⭐ helps others find it.
