@@ -213,28 +213,46 @@ A ready-to-run Databricks notebook benchmarking this library against standard ap
 
 Benchmarked on a synthetic monthly motor claims series with a deliberate structural break. Full script: `benchmarks/run_benchmark.py`.
 
-**Setup:** 84 months total (60 train, 24 test). DGP: Poisson counts with seasonal pattern, mild upward trend, and a +20% step shift at month 61 (simulating market hardening or a large risk event). Target coverage: 90%.
+**DGP:** Poisson counts with seasonal pattern, mild upward trend, and a +20% step shift at test start (simulating market hardening). Base forecaster: constant (training mean) — intentionally simple so conformal coverage correction is the differentiator. Target coverage: 90%.
 
-| Method | Coverage | Width | Kupiec p-value |
-|--------|----------|-------|---------------|
-| Target | 0.90 | — | — |
-| Naive fixed-width (training quantiles) | 0.375 | 60.3 | 0.0000 |
-| Split conformal (static calibration) | 0.500 | 86.5 | 0.0000 |
-| ConformalPID (insurance-conformal-ts) | 0.625 | 98.8 | 0.0003 |
+### Short horizon (24 months test)
 
-The Kupiec POF test (p=0.0000 for naive/split) confirms that static methods produce statistically invalid coverage in the presence of the structural break. ConformalPID improves coverage from 0.375 to 0.625 by adapting interval width based on observed coverage errors, but with a constant base forecaster (training mean) and a large sudden shift, 24 test months is not enough for the PID controller to fully converge to the target.
+60 train, 24 test months. Realistic monitoring window.
 
-**Coverage breakdown by test half:**
+| Method | Coverage | Width | Kupiec p |
+|--------|----------|-------|----------|
+| Target | 0.900 | — | — |
+| Naive fixed-width | 0.375 | 60.3 | 0.0000 |
+| Split conformal | 0.500 | 86.5 | 0.0000 |
+| ACI (this library) | **0.792** | 136.7 | **0.1163** |
+| ConformalPID (this library) | 0.625 | 95.8 | 0.0003 |
 
-| Method | Months 1–12 (post-break) | Months 13–24 |
-|--------|--------------------------|--------------|
-| Naive fixed | 0.417 | 0.333 |
-| Split conformal | 0.500 | 0.500 |
-| ConformalPID | 0.500 | 0.750 |
+Even on only 24 test months, ACI achieves statistically valid coverage (Kupiec p=0.12 > 0.05). The static methods are rejected outright.
 
-The ConformalPID trend is visible: coverage in the second half (0.75) is higher than the first half (0.50). Given enough test observations — typical for a UK motor book with monthly reporting — ACI and ConformalPID converge to the target coverage. On 60-month test horizons the adaptive methods track within 2–3 percentage points of target even during rapid distribution shift.
+### Long horizon (60 months test)
 
-The naive fixed interval achieves narrower width (60 vs 99) but at the cost of completely invalid coverage. There is no free lunch here: maintaining temporal validity under distribution shift requires adapting interval width.
+60 train, 60 test months. Demonstrates convergence with a mature monitoring series.
+
+| Method | Coverage | Width | Kupiec p |
+|--------|----------|-------|----------|
+| Target | 0.900 | — | — |
+| Naive fixed-width | 0.383 | 60.3 | 0.0000 |
+| Split conformal | 0.483 | 86.5 | 0.0000 |
+| ACI (this library) | **0.850** | 155.4 | **0.2256** |
+| ConformalPID (this library) | 0.667 | 117.3 | 0.0000 |
+
+ACI converges to 85% coverage (Kupiec p=0.23), tracking the target through the structural break. The second-half coverage (months 31–60) reaches 90% exactly, confirming convergence. ConformalPID is more conservative but shows the same improving trend.
+
+**Coverage convergence (ACI):**
+
+| Test window | First half | Second half |
+|-------------|-----------|-------------|
+| 24 months | 0.667 | 0.917 |
+| 60 months | 0.800 | 0.900 |
+
+Static methods stay flat at ~38–50% regardless of horizon length. Adaptive methods close the gap because they respond to observed miscoverage.
+
+The naive fixed interval achieves narrower width (60 vs 155) but at the cost of completely invalid coverage. There is no free lunch: maintaining temporal validity under distribution shift requires adapting interval width.
 
 **When to use:** Any insurance time series where the calibration period differs from the test period — which in practice means any time the model has been in production for more than a quarter. Monthly claims counts, loss ratios, and severity series all exhibit distribution shift that invalidates static conformal intervals.
 
