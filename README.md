@@ -7,6 +7,8 @@
 
 Conformal prediction intervals for non-exchangeable insurance claims time series.
 
+**Blog post:** [Your Conformal Intervals Are Wrong When the Claims Series Has Trend](https://burning-cost.github.io/2028/01/15/conformal-prediction-for-non-exchangeable-claims-time-series/)
+
 ---
 
 ## The problem
@@ -84,6 +86,8 @@ For plots:
 ```bash
 pip install "insurance-conformal-ts[plots]"
 ```
+
+> 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-conformal-ts/discussions). Found it useful? A ⭐ helps others find it.
 
 ---
 
