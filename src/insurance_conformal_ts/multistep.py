@@ -396,6 +396,13 @@ class MSCP:
         Use this for online deployment: call ``update`` each period to
         keep the calibration set current.
 
+        The method maintains a rolling history buffer ``_y_history`` and
+        ``_X_history`` that grows with each call.  For each new observation
+        at position t_abs in the history, it looks back H steps to produce
+        horizon-specific calibration scores.  This means a single-observation
+        update (n=1) correctly adds one score per horizon where a past
+        observation H steps earlier exists.
+
         Parameters
         ----------
         y_new:
@@ -418,27 +425,40 @@ class MSCP:
         y_new = np.asarray(y_new, dtype=float)
         effective_alpha = alpha if alpha is not None else self._alpha
         score_kw = score_kwargs or self._score_kwargs
-        n = len(y_new)
 
-        for t in range(n):
+        # Initialise persistent history buffer on first update call.
+        if not hasattr(self, "_y_history"):
+            self._y_history: list[float] = []
+            self._X_history: list[np.ndarray | None] = []
+
+        for obs_idx, y_obs in enumerate(y_new):
+            x_obs = X_new[obs_idx : obs_idx + 1] if X_new is not None else None
+            self._y_history.append(float(y_obs))
+            self._X_history.append(x_obs)
+
+            # Current absolute index in the history buffer
+            t_abs = len(self._y_history) - 1
+
+            # For each horizon h, check if there is a past observation at t_abs - h
+            # from which we should have forecast the current observation.
             for h in range(1, self.H + 1):
-                t_future = t + h
-                if t_future >= n:
+                t_origin = t_abs - h
+                if t_origin < 0:
                     continue
 
-                x_t = X_new[t : t + 1] if X_new is not None else None
-                y_hat_h = self._predict_h_step(x_t, h)
+                x_origin = self._X_history[t_origin]
+                y_hat_h = self._predict_h_step(x_origin, h)
                 if y_hat_h is None:
                     continue
 
                 step_kw = {
-                    k: (v[t_future : t_future + 1] if isinstance(v, np.ndarray) else v)
+                    k: (v[t_abs : t_abs + 1] if isinstance(v, np.ndarray) else v)
                     for k, v in score_kw.items()
                 }
 
                 s = float(
                     self.score.score(
-                        np.array([y_new[t_future]]),
+                        np.array([y_obs]),
                         np.array([y_hat_h]),
                         **step_kw,
                     )[0]

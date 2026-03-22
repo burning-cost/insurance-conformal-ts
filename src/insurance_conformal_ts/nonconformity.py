@@ -391,9 +391,16 @@ class ExposureAdjustedScore:
         np.ndarray
             Signed rate residuals: y/E - lambda_hat.
         """
+        import warnings as _warnings
         y = np.asarray(y, dtype=float)
         y_hat = np.asarray(y_hat, dtype=float)
         if exposure is None:
+            _warnings.warn(
+                "No exposure provided — using uniform exposure=1.0. "
+                "Pass exposure= for exposure-weighted scores.",
+                UserWarning,
+                stacklevel=2,
+            )
             E = np.ones_like(y)
         else:
             E = np.maximum(np.asarray(exposure, dtype=float), self.min_exposure)

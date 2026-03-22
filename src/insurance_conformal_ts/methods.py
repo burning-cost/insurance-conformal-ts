@@ -463,6 +463,8 @@ class EnbPI:
         window_size: int | None = 200,
         seed: int = 42,
     ) -> None:
+        if B < 1:
+            raise ValueError(f"B must be >= 1 (number of bootstrap replicates); got {B}")
         self.forecaster_factory = forecaster_factory
         self.score = score if score is not None else AbsoluteResidualScore()
         self.B = B
