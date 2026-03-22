@@ -61,7 +61,12 @@ from insurance_conformal_ts.diagnostics import (
     plot_fan_chart,
 )
 
-__version__ = "0.1.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("insurance-conformal-ts")
+except PackageNotFoundError:
+    __version__ = "0.0.0"  # not installed
 __all__ = [
     # Non-conformity scores
     "NonConformityScore",
