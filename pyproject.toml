@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-conformal-ts"
-version = "0.1.2"
+version = "0.2.0"
 description = "Conformal prediction intervals for non-exchangeable insurance claims time series"
 readme = "README.md"
 requires-python = ">=3.10"

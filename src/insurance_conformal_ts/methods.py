@@ -993,3 +993,314 @@ class ConformalPID:
             test_coverage_flags.append(1.0 if covered else 0.0)
 
         return lower, upper
+
+
+# ---------------------------------------------------------------------------
+# WeightedConformalPredictor: Weighted Conformal Prediction (WCP)
+# ---------------------------------------------------------------------------
+
+def _weighted_conformal_quantile(scores: np.ndarray, weights: np.ndarray, alpha: float) -> float:
+    """Compute the weighted conformal quantile.
+
+    The weighted quantile is the smallest q such that the sum of normalised
+    weights for scores <= q is >= (1 - alpha).
+
+    This is a weighted analogue of the standard empirical quantile used in
+    split conformal prediction. The finite-sample coverage guarantee from
+    standard CP does not apply here; the guarantee instead depends on how
+    well the weights capture the relevance of past scores to the future.
+
+    Parameters
+    ----------
+    scores:
+        Non-conformity scores (non-negative floats).
+    weights:
+        Normalised weights, same length as scores. Must sum to 1.
+    alpha:
+        Miscoverage level (0 < alpha < 1).
+
+    Returns
+    -------
+    float
+        Weighted quantile. Returns inf if all cumulative weights are below
+        (1 - alpha) even at the maximum score (pathological case with very
+        small calibration sets and extreme alpha).
+    """
+    if len(scores) == 0:
+        return np.inf
+    # Sort by score value
+    order = np.argsort(scores)
+    sorted_scores = scores[order]
+    sorted_weights = weights[order]
+    cumulative = np.cumsum(sorted_weights)
+    idx = np.searchsorted(cumulative, 1.0 - alpha, side="left")
+    if idx >= len(sorted_scores):
+        return np.inf
+    return float(sorted_scores[idx])
+
+
+class WeightedConformalPredictor:
+    """Weighted Conformal Prediction with exponential decay (WCP).
+
+    Standard split conformal prediction treats all calibration residuals as
+    equally informative. For a stationary i.i.d. process that is fine, but
+    insurance claims series exhibit trend, seasonality, and distribution
+    shift — older residuals are less relevant than recent ones.
+
+    WCP addresses this by assigning exponentially decaying weights to
+    calibration scores before computing the conformal quantile:
+
+        w_i = beta^(n - i),   i = 1, ..., n
+
+    so the most recent score (i = n) gets weight 1 and the oldest gets
+    beta^(n-1). With beta = 1 the weights are uniform and WCP reduces to
+    standard split conformal prediction (up to the finite-sample correction
+    in _conformal_quantile — WCP uses a different weighted variant).
+
+    Unlike ACI, which adapts the miscoverage level alpha_t, WCP keeps alpha
+    fixed but re-weights the calibration distribution. Unlike EnbPI, which
+    hard-drops old residuals via a sliding window, WCP soft-downweights them.
+    These mechanisms are complementary and can be combined.
+
+    **When to use WCP**: Use it when you believe the score distribution is
+    slowly shifting (e.g. improving base forecaster, seasonal effects). For
+    abrupt shifts, a hard window (small ``window_size``) or ACI will adapt
+    faster.
+
+    Parameters
+    ----------
+    base_forecaster:
+        Any ``BaseForecaster``. Must be fitted before ``predict_interval``.
+    score:
+        Non-conformity score. Defaults to ``AbsoluteResidualScore``.
+    alpha:
+        Default miscoverage level. Can be overridden in ``predict_interval``.
+        Default 0.1.
+    beta:
+        Exponential decay rate in (0, 1]. With beta = 1 all weights are
+        equal (standard conformal). Smaller values downweight older scores
+        more aggressively. Typical range: 0.9 – 0.99. Default 0.95.
+    window_size:
+        Optional maximum number of calibration scores to retain. None uses
+        all historical scores. Default None.
+
+    References
+    ----------
+    Tibshirani, R. J., et al. (2019). Conformal Prediction Under Covariate
+    Shift. NeurIPS 2019. (Introduced weighted conformal prediction.)
+
+    Barber, R. F., et al. (2023). Conformal prediction beyond exchangeability.
+    Annals of Statistics. (Theoretical framework for WCP.)
+    """
+
+    def __init__(
+        self,
+        base_forecaster: BaseForecaster,
+        score: NonConformityScore | None = None,
+        alpha: float = 0.1,
+        beta: float = 0.95,
+        window_size: int | None = None,
+    ) -> None:
+        if not (0.0 < beta <= 1.0):
+            raise ValueError(f"beta must be in (0, 1]; got {beta}")
+        if not (0.0 < alpha < 1.0):
+            raise ValueError(f"alpha must be in (0, 1); got {alpha}")
+
+        self.base_forecaster = base_forecaster
+        self.score = score if score is not None else AbsoluteResidualScore()
+        self.alpha = alpha
+        self.beta = beta
+        self.window_size = window_size
+
+        self._is_fitted: bool = False
+        self._calibration_scores: list[float] = []
+        self._score_kwargs: dict = {}
+
+    def _compute_weights(self, n: int) -> np.ndarray:
+        """Compute normalised exponential decay weights for n scores.
+
+        The most recent score (index n-1 in the list, i = n) gets weight 1,
+        the oldest (index 0, i = 1) gets weight beta^(n-1).
+
+        Parameters
+        ----------
+        n:
+            Number of calibration scores.
+
+        Returns
+        -------
+        np.ndarray
+            Normalised weights, shape (n,), summing to 1.
+        """
+        # w_i = beta^(n - i) for i in 1..n
+        # i=1 -> beta^(n-1), i=n -> beta^0 = 1
+        exponents = np.arange(n - 1, -1, -1, dtype=float)  # [n-1, n-2, ..., 0]
+        w = self.beta ** exponents
+        return w / w.sum()
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: np.ndarray | None = None,
+        score_kwargs: dict | None = None,
+    ) -> "WeightedConformalPredictor":
+        """Fit the base forecaster on training data.
+
+        The calibration set is initialised empty. Calibration scores
+        accumulate during ``predict_interval`` as observations arrive.
+        To seed the calibration set with held-out data, call
+        ``calibrate()`` after ``fit()``.
+
+        Parameters
+        ----------
+        y:
+            Training observations, shape (n_train,).
+        X:
+            Training features, shape (n_train, p). Optional.
+        score_kwargs:
+            Extra keyword arguments passed to ``score.score()``.
+
+        Returns
+        -------
+        WeightedConformalPredictor
+            Self, for method chaining.
+        """
+        y = np.asarray(y, dtype=float)
+        self.base_forecaster.fit(y, X)
+        self._is_fitted = True
+        self._calibration_scores = []
+        self._score_kwargs = score_kwargs or {}
+        return self
+
+    def calibrate(
+        self,
+        y: np.ndarray,
+        X: np.ndarray | None = None,
+        score_kwargs: dict | None = None,
+    ) -> "WeightedConformalPredictor":
+        """Seed the calibration set from a held-out calibration split.
+
+        Call this after ``fit()`` and before ``predict_interval()`` when
+        you have a dedicated calibration set (the standard split conformal
+        setup). The calibration scores are appended to any existing scores.
+
+        Parameters
+        ----------
+        y:
+            Calibration observations, shape (n_cal,).
+        X:
+            Calibration features. Optional.
+        score_kwargs:
+            Extra keyword arguments for the score function.
+
+        Returns
+        -------
+        WeightedConformalPredictor
+            Self.
+        """
+        if not self._is_fitted:
+            raise RuntimeError("Call fit() before calibrate().")
+
+        y = np.asarray(y, dtype=float)
+        score_kw = score_kwargs or self._score_kwargs
+        n = len(y)
+
+        for i in range(n):
+            step_kw = {
+                k: (v[i : i + 1] if isinstance(v, np.ndarray) else v)
+                for k, v in score_kw.items()
+            }
+            x_i = X[i : i + 1] if X is not None else None
+            y_hat_i = self.base_forecaster.predict(x_i)
+            s_i = float(self.score.score(np.array([y[i]]), y_hat_i, **step_kw)[0])
+            self._calibration_scores.append(s_i)
+
+        return self
+
+    def predict_interval(
+        self,
+        y: np.ndarray,
+        X: np.ndarray | None = None,
+        alpha: float | None = None,
+        score_kwargs: dict | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Produce WCP sequential prediction intervals.
+
+        At each step t, the method:
+
+        1. Computes the point forecast y_hat_t.
+        2. Retrieves the calibration set (optionally windowed).
+        3. Assigns exponential decay weights to calibration scores.
+        4. Computes the weighted conformal quantile q_t.
+        5. Outputs the interval [y_hat_t - q_t, y_hat_t + q_t] (via
+           ``score.inverse``).
+        6. Observes y[t], computes s_t = score(y[t], y_hat_t), and
+           appends it to the calibration set.
+
+        Parameters
+        ----------
+        y:
+            Test observations, shape (n_test,). Used only to update the
+            calibration set online; the method is strictly causal.
+        X:
+            Test features, shape (n_test, p). Optional.
+        alpha:
+            Miscoverage level. Overrides ``self.alpha`` for this call.
+        score_kwargs:
+            Extra keyword arguments for the non-conformity score.
+
+        Returns
+        -------
+        lower, upper:
+            Prediction interval bounds, each shape (n_test,).
+        """
+        if not self._is_fitted:
+            raise RuntimeError("Call fit() before predict_interval().")
+
+        y = np.asarray(y, dtype=float)
+        n = len(y)
+        eff_alpha = alpha if alpha is not None else self.alpha
+        score_kw = score_kwargs or self._score_kwargs
+
+        lower = np.empty(n)
+        upper = np.empty(n)
+
+        for t in range(n):
+            step_kw = {
+                k: (v[t : t + 1] if isinstance(v, np.ndarray) else v)
+                for k, v in score_kw.items()
+            }
+
+            x_t = X[t : t + 1] if X is not None else None
+            y_hat_t = self.base_forecaster.predict(x_t)
+
+            # Retrieve (optionally windowed) calibration scores
+            cal = (
+                self._calibration_scores[-self.window_size :]
+                if self.window_size is not None
+                else self._calibration_scores
+            )
+
+            if len(cal) == 0:
+                q_t = np.inf
+            else:
+                cal_arr = np.array(cal, dtype=float)
+                weights = self._compute_weights(len(cal_arr))
+                q_t = _weighted_conformal_quantile(np.abs(cal_arr), weights, eff_alpha)
+
+            upper[t] = float(self.score.inverse(q_t, y_hat_t, **step_kw).flat[0])
+            lower[t] = float(
+                self.score.inverse(q_t, y_hat_t, upper=False, **step_kw).flat[0]
+            )
+
+            # Observe y[t] and append to calibration set
+            s_t = float(
+                self.score.score(np.array([y[t]]), y_hat_t, **step_kw)[0]
+            )
+            self._calibration_scores.append(s_t)
+
+            # Enforce window: drop oldest scores beyond window_size
+            if self.window_size is not None and len(self._calibration_scores) > self.window_size:
+                self._calibration_scores = self._calibration_scores[-self.window_size :]
+
+        return lower, upper

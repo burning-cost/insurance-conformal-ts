@@ -25,6 +25,10 @@ This library implements methods that handle the temporal case:
 - **ConformalPID** (Angelopoulos et al. NeurIPS 2023): PID controller for
   quantile tracking. Best theoretical guarantees.
 
+- **WeightedConformalPredictor** (WCP): Weighted Conformal Prediction with
+  exponential decay. Re-weights calibration scores so recent observations
+  matter more. Complementary to ACI and EnbPI; use for slow distribution drift.
+
 - **MSCP**: Multi-Step Split Conformal Prediction. Horizon-specific calibration
   for h=1..H.
 
@@ -48,6 +52,7 @@ from insurance_conformal_ts.methods import (
     ConformalPID,
     MeanForecaster,
     SPCI,
+    WeightedConformalPredictor,
 )
 from insurance_conformal_ts.multistep import MSCP
 from insurance_conformal_ts.insurance import (
@@ -80,6 +85,7 @@ __all__ = [
     "EnbPI",
     "SPCI",
     "ConformalPID",
+    "WeightedConformalPredictor",
     # Built-in forecasters
     "BaseForecaster",
     "ConstantForecaster",

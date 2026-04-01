@@ -387,7 +387,7 @@ wheels = [
 
 [[package]]
 name = "insurance-conformal-ts"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -415,7 +415,7 @@ plots = [
 requires-dist = [
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.7" },
     { name = "matplotlib", marker = "extra == 'plots'", specifier = ">=3.7" },
-    { name = "numpy", specifier = ">=1.24" },
+    { name = "numpy", specifier = ">=1.25" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
