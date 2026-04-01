@@ -225,8 +225,12 @@ class TestWCPCoverage:
         n_test = 400
         y = make_ar1(n_train + n_cal + n_test, phi=0.7, sigma=1.5, seed=11)
 
+        # AR(1) data is centred around zero and takes negative values, so
+        # clip_lower must be False — otherwise the lower bound clips at 0
+        # and coverage collapses to ~50%.
+        score = AbsoluteResidualScore(clip_lower=False)
         wcp = WeightedConformalPredictor(
-            ConstantForecaster(), beta=0.95, alpha=ALPHA
+            ConstantForecaster(), score=score, beta=0.95, alpha=ALPHA
         )
         wcp.fit(y[:n_train])
         wcp.calibrate(y[n_train : n_train + n_cal])
