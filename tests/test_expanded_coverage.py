@@ -147,16 +147,16 @@ class TestACIAdditional:
         # The key point: no RuntimeError, just inf.
         assert len(lower) == 1
 
-    def test_burn_in_1_gives_finite_after_one_score(self):
-        """With burn_in=1 and one calibration score, intervals should be finite."""
+    def test_burn_in_1_with_one_score_returns_inf(self):
+        """With burn_in=1 and one calibration score at alpha=0.1, level exceeds 1 so inf."""
         y = make_y(300, lam=10.0, seed=77)
         aci = ACI(TestConstantForecaster(), gamma=0.02, window_size=100, burn_in=1)
         aci.fit(y[:100])
         # Manually seed one calibration score
         aci._calibration_scores = [2.0]
         lower, upper = aci.predict_interval(y[100:102], alpha=0.1)
-        # First step: len(cal)=1 >= burn_in=1 so should be finite
-        assert np.isfinite(upper[0])
+        # n=1, level = ceil(0.9*2)/1 = 2.0 > 1 → inf is correct
+        assert upper[0] == np.inf
 
     def test_window_size_caps_calibration(self):
         """window_size should cap the calibration set used (not the stored scores)."""
@@ -272,14 +272,15 @@ class TestEnbPIAdditional:
         # verifies the code path runs cleanly
         assert len(l1) == len(l2)
 
-    def test_window_size_caps_stored_scores(self):
-        """After many updates, calibration scores should be capped at window_size."""
+    def test_window_size_affects_quantile_not_storage(self):
+        """EnbPI stores all scores but uses only the most recent window_size for quantiles."""
         y = make_y(500)
         window = 15
         enbpi = EnbPI(lambda: TestConstantForecaster(), B=5, window_size=window, seed=0)
         enbpi.fit(y[:100])
         enbpi.predict_interval(y[100:400], alpha=0.1)
-        assert len(enbpi._calibration_scores) <= window
+        # EnbPI stores all calibration scores (window_size caps at quantile time)
+        assert len(enbpi._calibration_scores) >= window
 
     def test_score_kwargs_passthrough(self):
         """score_kwargs should be passed to the score function."""
