@@ -1,9 +1,9 @@
 # insurance-conformal-ts
 
 [![PyPI](https://img.shields.io/pypi/v/insurance-conformal-ts)](https://pypi.org/project/insurance-conformal-ts/)
+[![Downloads](https://img.shields.io/pypi/dm/insurance-conformal-ts)](https://pypi.org/project/insurance-conformal-ts/)
 [![Python](https://img.shields.io/pypi/pyversions/insurance-conformal-ts)](https://pypi.org/project/insurance-conformal-ts/)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![License](https://img.shields.io/pypi/l/insurance-conformal-ts)](https://pypi.org/project/insurance-conformal-ts/)
 
 Conformal prediction intervals for non-exchangeable insurance claims time series.
 
@@ -256,3 +256,10 @@ The naive fixed interval achieves narrower width (60 vs 155) but at the cost of 
 
 **When to use:** Any insurance time series where the calibration period differs from the test period — which in practice means any time the model has been in production for more than a quarter. Monthly claims counts, loss ratios, and severity series all exhibit distribution shift that invalidates static conformal intervals.
 
+## Related Libraries
+
+| Library | Description |
+|---------|-------------|
+| [`insurance-conformal`](https://github.com/burning-cost/insurance-conformal) | Cross-sectional conformal prediction — the exchangeable version, for per-risk prediction intervals |
+| [`insurance-monitoring`](https://github.com/burning-cost/insurance-monitoring) | Model monitoring — tracks the drift that violates exchangeability assumptions this library corrects for |
+| [`insurance-quantile`](https://github.com/burning-cost/insurance-quantile) | Quantile GBMs — parametric alternative for time-series tail risk estimation |
